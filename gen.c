@@ -677,7 +677,7 @@ static void emit_decl_init(Vector *inits, int off, int totalsize) {
 
 static void emit_pre_inc_dec(Node *node, char *op) {
     emit_expr(node->operand);
-    emit("%s $1, #rax", op);
+    emit("%s $%d, #rax", op, node->ty->ptr ? node->ty->ptr->size : 1);
     emit_store(node->operand);
 }
 
@@ -685,7 +685,7 @@ static void emit_post_inc_dec(Node *node, char *op) {
     SAVE;
     emit_expr(node->operand);
     push("rax");
-    emit("%s $1, #rax", op);
+    emit("%s $%d, #rax", op, node->ty->ptr ? node->ty->ptr->size : 1);
     emit_store(node->operand);
     pop("rax");
 }
@@ -759,7 +759,7 @@ static void emit_literal(Node *node) {
             node->slabel = make_label();
             emit_noindent(".data");
             emit_label(node->slabel);
-            emit(".string \"%s\"", quote_cstring_len(node->sval, node->ty->size));
+            emit(".string \"%s\"", quote_cstring_len(node->sval, node->ty->size - 1));
             emit_noindent(".text");
         }
         emit("lea %s(#rip), #rax", node->slabel);
@@ -810,8 +810,10 @@ static char **read_source_file(char *file) {
     struct stat st;
     fstat(fileno(fp), &st);
     char *buf = malloc(st.st_size + 1);
-    if (fread(buf, 1, st.st_size, fp) != st.st_size)
+    if (fread(buf, 1, st.st_size, fp) != st.st_size) {
+        fclose(fp);
         return NULL;
+    }
     fclose(fp);
     buf[st.st_size] = '\0';
     return split(buf);
@@ -1208,7 +1210,7 @@ static void emit_expr(Node *node) {
     case AST_LITERAL: emit_literal(node); return;
     case AST_LVAR:    emit_lvar(node); return;
     case AST_GVAR:    emit_gvar(node); return;
-    case AST_FUNCDESG: return;
+    case AST_FUNCDESG: emit_addr(node); return;
     case AST_FUNCALL:
         if (maybe_emit_builtin(node))
             return;
